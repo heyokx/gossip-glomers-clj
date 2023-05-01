@@ -1,10 +1,12 @@
 {:paths ["src" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.11.1"}}
+ :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+        cheshire/cheshire {:mvn/version "5.11.0"}}
  :aliases
  {:run-m {:main-opts ["-m" "heyokx.echo-challenge"]}
-  :run-x {:ns-default heyokx.echo-challenge
-          :exec-fn greet
-          :exec-args {:name "Clojure"}}
+  :dev {
+        :extra-paths ["dev"]
+        :extra-deps {djblue/portal {:mvn/version "0.40.0"}}
+  }
   :build {:deps {io.github.clojure/tools.build
                  {:git/tag "v0.9.2" :git/sha "fe6b140"}}
           :ns-default build}

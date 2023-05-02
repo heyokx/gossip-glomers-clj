@@ -1,11 +1,22 @@
 (ns heyokx.echo-challenge
+  "Challenge - Echo: https://fly.io/dist-sys/1/"
   (:gen-class)
-  (:require [cheshire.core :as c]))
+  (:require [cheshire.core :as c])
+  
+  (:import [java.util UUID]))
 
-(defn greet
-  "Callable entry point to the application."
-  [data]
-  (println (str "Hello, " (or (:name data) "World") "!")))
+(defn listen
+  "Listen to stdin until newline."
+  []
+  (let [input (read-line)]
+    (tap> input)
+    input))
+
+(defn speak
+  "Speak to stdout."
+  [output]
+  (tap> output)
+  (spit *out* (str output "\n")))
 
 (defn echo
   "Echo function!"
@@ -21,4 +32,10 @@
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (greet {:name (first args)}))
+  (print  "Need to implement!"))
+
+(comment 
+  (->> (listen)
+       (c/parse-string)
+       (speak))
+  )

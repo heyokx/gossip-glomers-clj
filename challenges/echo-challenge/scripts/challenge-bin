@@ -1,0 +1,5 @@
+#!/usr/bin/env fish
+
+set -l JAR_FILE ../target/net.clojars.heyokx/echo-challenge-0.1.0-SNAPSHOT.jar
+
+java -jar $JAR_FILE

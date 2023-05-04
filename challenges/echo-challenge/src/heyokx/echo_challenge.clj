@@ -1,41 +1,65 @@
 (ns heyokx.echo-challenge
   "Challenge - Echo: https://fly.io/dist-sys/1/"
   (:gen-class)
-  (:require [cheshire.core :as c])
+  (:require [charred.api :as charred]
+            [taoensso.timbre :as timbre
+             :refer [error]])
   
   (:import [java.util UUID]))
 
 (defn listen
   "Listen to stdin until newline."
   []
-  (let [input (read-line)]
-    (tap> input)
-    input))
+  (let [input (read-line)] 
+    (tap> (str "Listening:" input))
+    (cond
+      (string? input);;TODO: potentially extract this (shouldn't be part of `listen`) + change check
+      (do 
+        (tap> (str "Input:" input))
+        input))))
 
 (defn speak
   "Speak to stdout."
   [output]
-  (tap> output)
-  (spit *out* (str output "\n")))
+  (tap> (str "Output:" output))
+  (cond
+    (not (nil? output)) 
+    (do
+      (tap> (str "Speaking:" output))
+      (println output))))
 
-(defn echo
-  "Echo function!"
-  []
-  (let [content (c/generate-string {:src "a string identifying the node this message came from" 
-                                    :dest "a string identifying the node this message is to"
-                                    :body {
-                                           :a 12
-                                           :b "Blah"
-                                           }})]
-    content))
+(defn- parse-input
+  [input]
+  (try
+    (charred/read-json input)
+    (catch Exception e (error e))))
+
+(defn node-proc
+  "Node processor."
+  [input]
+  (let [parsed-input (parse-input input)] ;should probably be called `parse-message` and `message`
+    (cond
+      (not (nil? parsed-input)) (let 
+                                 [output (charred/write-json-str parsed-input)]
+                                  output))))
+
+(defn iter-loop
+  "Node loop execution wrapper."
+  [listen-fn speak-fn node-proc-fn]
+  #(loop []
+     (->> (listen-fn)
+          (node-proc-fn)
+          (speak-fn))
+     (recur)))
 
 (defn -main
-  "I don't do a whole lot ... yet."
+  "Node entry point."
   [& args]
-  (print  "Need to implement!"))
+  (let [run-loop (iter-loop listen speak node-proc)]
+    (run-loop)))
 
 (comment 
   (->> (listen)
-       (c/parse-string)
+       (node-proc)
        (speak))
   )

@@ -2,10 +2,14 @@
   "Challenge - Echo: https://fly.io/dist-sys/1/"
   (:gen-class)
   (:require [charred.api :as charred]
+            [clojure.spec.alpha :as s]
+            [heyokx.spec.node]
             [taoensso.timbre :as timbre
              :refer [error]])
   
   (:import [java.util UUID]))
+
+(defonce node (atom {}))
 
 (defn listen
   "Listen to stdin until newline."
@@ -13,35 +17,55 @@
   (let [input (read-line)] 
     (tap> (str "Listening:" input))
     (cond
-      (string? input);;TODO: potentially extract this (shouldn't be part of `listen`) + change check
+      (string? input)
       (do 
         (tap> (str "Input:" input))
         input))))
 
 (defn speak
   "Speak to stdout."
-  [output]
+  ([])
+  ([output]
   (tap> (str "Output:" output))
   (cond
     (not (nil? output)) 
     (do
       (tap> (str "Speaking:" output))
-      (println output))))
+      (println output)))))
 
 (defn- parse-input
   [input]
   (try
-    (charred/read-json input)
+    (let [parsed-input (charred/read-json input :key-fn keyword)]
+      (tap> parsed-input)
+      parsed-input)
     (catch Exception e (error e))))
 
-(defn node-proc
-  "Node processor."
-  [input]
-  (let [parsed-input (parse-input input)] ;should probably be called `parse-message` and `message`
-    (cond
-      (not (nil? parsed-input)) (let 
-                                 [output (charred/write-json-str parsed-input)]
-                                  output))))
+(defn- format-output
+  [output]
+  (try
+    (let [formatted-output (charred/write-json-str output)]
+      (tap> formatted-output)
+      formatted-output)
+    (catch Exception e (error e))))
+
+(defn init-msg-proc
+  [init-msg]
+  (cond
+    (nil? (:id @node))
+    (do
+      (swap! node assoc :id (-> (:body init-msg)
+                                (:node_id)))
+      (swap! node assoc :net-nodes (-> (:body init-msg)
+                                       (:node_ids)))
+      {:src (:id @node)
+       :dest (:src init-msg)
+       :body {
+              :type "init_ok"
+              :in_reply_to (-> (:body init-msg)
+                               (:msg_id))
+       }})
+    :else (error "Node ID already set!")))
 
 (defn iter-loop
   "Node loop execution wrapper."
@@ -49,17 +73,51 @@
   #(loop []
      (->> (listen-fn)
           (node-proc-fn)
-          (speak-fn))
+          (apply speak-fn))
      (recur)))
+
+(defonce msg-proc-map
+  {:node.init/message init-msg-proc})
+
+(defn create-node-proc
+  "Creates the node processor fn associated to the given parameters.
+   Parameters:
+    parse-input-fn - transforms input into the desired processing format,
+    output-format-fn - transforms output into the desired format,
+    msg-proc-map - map of messages and their associated processors"
+  [parse-input-fn output-format-fn msg-proc-map]
+  (fn [input]
+    (let [message (parse-input-fn input)
+          msg-procs (-> (filter #(s/valid? (key %) message) msg-proc-map)
+                        (vals))]
+      (doall 
+       (map #(-> (% message) (output-format-fn)) msg-procs)))))
 
 (defn -main
   "Node entry point."
-  [& args]
-  (let [run-loop (iter-loop listen speak node-proc)]
+  [& _]
+  (let [node-proc (create-node-proc parse-input format-output msg-proc-map)
+        run-loop (iter-loop listen speak node-proc)]
     (run-loop)))
 
 (comment 
+  (def node-proc (create-node-proc parse-input format-output msg-proc-map))
+
   (->> (listen)
        (node-proc)
-       (speak))
+       (speak)) 
+  
+  (reset! node {})
+  (swap! node assoc :id "n1")
+  
+  (def msg-example
+    {:src "n1"
+     :dest "n3"
+     :body {:type "init"
+            :msg_id 1
+            :node_id "n3"
+            :node_ids ["n1" "n2" "n3"]}})
+  
+  (init-msg-proc msg-example)
+  @node
   )
